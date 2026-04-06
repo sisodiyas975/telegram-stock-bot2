@@ -9,7 +9,7 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = "8773521279:AAE4ogE89y7Tiq1JpSmbJEiXlmZwVjDgczI"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-ALLOWED_CHATS = [6929050061]   # ⚠️ make sure this is correct
+ALLOWED_CHATS = [6929050061]  # ⚠️ verify this
 DB_NAME = "stock.db"
 LOW_STOCK_LIMIT = 100
 
@@ -35,6 +35,9 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+# ✅ IMPORTANT FIX (runs on Render)
+init_db()
 
 
 def get_stock():
@@ -126,7 +129,7 @@ TUKDE :
 @app.route("/telegram", methods=["POST"])
 def telegram():
     data = request.get_json()
-    print("Incoming:", data)  # DEBUG
+    print("Incoming:", data)
 
     if not data or "message" not in data:
         return "OK"
@@ -134,17 +137,19 @@ def telegram():
     chat_id = data["message"]["chat"]["id"]
 
     if chat_id not in ALLOWED_CHATS:
-        print("Unauthorized chat:", chat_id)
+        print("Unauthorized:", chat_id)
         return "OK"
 
     text = data["message"].get("text", "").lower()
 
-    # -------- TEST MESSAGE -------- #
     if text == "hi":
         send_message(chat_id, "Bot working ✅")
         return "OK"
 
-    # -------- ADD STOCK -------- #
+    if "/stock" in text:
+        send_message(chat_id, format_stock())
+        return "OK"
+
     add = re.search(r'add\s+(.+?)\s+(\d+)', text)
     if add:
         item = add.group(1).title()
@@ -156,7 +161,6 @@ def telegram():
         send_message(chat_id, f"✅ Added {qty} MTR\n{item}\nNew: {new_qty:.0f}")
         return "OK"
 
-    # -------- DEDUCT STOCK -------- #
     match = re.search(r'(\d+)\s*(?:m|meter).*?(\d+(?:\.\d+)?)\s*kg', text)
     if match:
         meters = float(match.group(1))
@@ -175,57 +179,23 @@ def telegram():
         send_message(chat_id, format_stock())
         return "OK"
 
-    # -------- STOCK VIEW -------- #
-    if "/stock" in text:
-        send_message(chat_id, format_stock())
-
     return "OK"
 
 
 # ================= MOBILE UI ================= #
 @app.route("/")
 def panel():
-    password = request.args.get("pass")
-
-    if password != "1234":
+    if request.args.get("pass") != "1234":
         return "❌ Unauthorized"
 
     stock = get_stock()
 
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            body {font-family: Arial; background:#f2f2f2; padding:10px;}
-            .card {
-                background:white;
-                padding:15px;
-                margin:10px 0;
-                border-radius:10px;
-                box-shadow:0 2px 5px rgba(0,0,0,0.1);
-            }
-            .title {font-weight:bold;}
-            .qty {font-size:20px; color:green;}
-        </style>
-    </head>
-    <body>
-        <h2>📦 Stock Dashboard</h2>
-        {% for k,v in stock.items() %}
-        <div class="card">
-            <div class="title">{{k}}</div>
-            <div class="qty">{{v}} MTR</div>
+    return render_template_string("""
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <h2>📦 Stock Dashboard</h2>
+    {% for k,v in stock.items() %}
+        <div style="background:white;margin:10px;padding:10px;border-radius:10px;">
+            <b>{{k}}</b><br>{{v}} MTR
         </div>
-        {% endfor %}
-    </body>
-    </html>
-    """
-
-    return render_template_string(html, stock=stock)
-
-
-# ================= MAIN ================= #
-if __name__ == "__main__":
-    init_db()
-    app.run(host="0.0.0.0", port=5000)
+    {% endfor %}
+    """, stock=stock)
